@@ -420,7 +420,7 @@ int convert_and_send_frame_yuy2(int fid, void *fbaddr, int fbstride, int fbpixel
 {
 	static struct UsbbdDeviceRequest req;
 	static const int eof = 1;
-	unsigned int event;
+		u32 event;
 	unsigned int t0, t1, t2, t3;
 	int ret;
 
