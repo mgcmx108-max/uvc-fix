@@ -1,0 +1,95 @@
+TARGET = uvc
+OBJS    = src/main.o src/utils.o src/format_conversion.o stubs/sceDmacplus_driver.o
+
+INCDIR   = include
+CFLAGS   = -G0 -Wall -O2 -MMD -MP
+CXXFLAGS = $(CFLAGS) -fno-exceptions -fno-rtti
+ASFLAGS  = $(CFLAGS)
+LIBDIR   =
+LDFLAGS  =
+LIBS     = -lpspusb_driver -lpspusbbus_driver
+DEPS     = $(OBJS:.o=.d)
+
+PSP_FW_VERSION = 660
+BUILD_PRX = 1
+EXTRA_TARGETS = EBOOT.PBP
+PSP_EBOOT_TITLE = UVC - USB Video Class
+
+EXTRA_CLEAN=$(DEPS)
+PSPSDK=$(shell psp-config --pspsdk-path)
+include $(PSPSDK)/lib/build.mak
+
+copy: EBOOT.PBP
+	@mkdir -p $(PSP_MS)/PSP/GAME/$(TARGET)
+	@cp EBOOT.PBP $(PSP_MS)/PSP/GAME/$(TARGET)
+	@sync
+	@echo "Copied!"
+
+copyprx: $(TARGET).prx
+	@cp $^ $(PSP_MS)/seplugins/
+	@sync
+	@echo "Copied!"
+
+-include $(DEPS)
+
+# UVC-fix — исправленная сборка плагина PSP UVC
+
+Это исходники плагина [xerpi/psp-uvc-usb-video-class](https://github.com/xerpi/psp-uvc-usb-video-class)
+версии 0.2 с тремя правками, которые должны уменьшить количество падений игр.
+
+## Что изменено и почему
+
+| # | Что | Зачем |
+|---|---|---|
+| 1 | `ENABLE_LOGGING` выключен (`main.c`) | В этом проекте `printf` переопределён как `pspDebugScreenPrintf`, то есть каждый кадр плагин писал 4–5 строк текста **в экранный буфер**. В игре это лишняя работа для GPU/CPU и мусор поверх кадра. |
+| 2 | Убран вызов `pspDebugScreenInit()` | Эта функция **переключает framebuffer** на собственный буфер модуля. В XMB это нормально (плагин там как отдельная программа), но при загрузке игры она отбирает экран у игры — вероятная причина чёрного экрана/зависания. |
+| 3 | Проверка параметров framebuffer + запасной путь | `send_frame()` теперь проверяет адрес, шаг строки и формат пикселя. Во время смены режима экрана (загрузка сохранения, ролик, выход в меню) LCDC может вернуть 0 или мусор — раньше это приводило к чтению по невалидному указателю и падению. Если LCDC отдал мусор, берём кадр через `sceDisplayGetFrameBuf()`, если и там мусор — кадр просто пропускается. |
+
+Дополнительно: в `utils.c` убран `printf` в обработчике выхода (экран больше не
+инициализируется, печатать туда нельзя), в `utils.h` добавлены `stddef.h` и
+`pspthreadman.h` — чтобы код собирался современным gcc без предупреждений об
+неявных объявлениях.
+
+**Чего правки не делают:** не ускоряют RGB→YUY2 (это отдельная задача из
+[issue #11](https://github.com/xerpi/psp-uvc-usb-video-class/issues/11)) и не
+гарантируют совместимость со всеми играми.
+
+## Сборка
+
+### Вариант 1 — GitHub Actions (ничего не устанавливать)
+
+1. Залейте содержимое этой папки в репозиторий на GitHub (можно просто
+   перетащить файлы через «Add file → Upload files»).
+2. Вкладка **Actions** → workflow **build-uvc** → **Run workflow**.
+3. Через 2–3 минуты скачайте артефакт **uvc-prx**, внутри `uvc.prx`.
+
+### Вариант 2 — Docker
+
+```bash
+docker run --rm -v "$PWD":/src -w /src pspdev/pspdev make
+```
+
+## Установка на PSP
+
+1. Сделайте копию рабочего плагина: `E:\SEPLUGINS\uvc_orig.prx`.
+2. Замените `E:\SEPLUGINS\uvc.prx` новым файлом.
+3. Строка в `E:\SEPLUGINS\PLUGINS.TXT` должна быть:
+   ```
+   game, ms0:/seplugins/uvc.prx, on
+   ```
+4. Перезагрузите PSP и запустите проблемную игру.
+
+## Если стало хуже
+
+- Выключите PSP, зажмите **R** и включите — попадёте в recovery-меню, там
+  можно отключить плагины.
+- Либо подключите карту памяти кардридером и верните `uvc_orig.prx` на место
+  `uvc.prx`.
+
+## Честно о статусе
+
+Код собран и проверен на синтаксис/типы (компилятор без pspsdk), но **на
+реальной PSP не запускался**. Это осмысленная попытка по анализу исходников,
+а не гарантированное исправление: если Gran Turismo падает и с этой сборкой,
+значит причина не в логировании и не в проверке framebuffer, и тогда остаётся
+аппаратный путь — карта видеозахвата (у PSP-3000 есть видеовыход).
