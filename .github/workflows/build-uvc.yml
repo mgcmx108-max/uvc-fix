@@ -1,0 +1,33 @@
+name: build-uvc
+
+# Собирает исправленный uvc.prx в облаке GitHub (локально ничего ставить не надо).
+#
+#  1. залейте эту папку в репозиторий на GitHub
+#  2. вкладка Actions -> workflow "build-uvc" -> Run workflow
+#  3. внизу страницы сборки скачайте артефакт "uvc-prx" (внутри uvc.prx)
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build plugin (pspdev docker image)
+        run: docker run --rm -v "$PWD":/src -w /src pspdev/pspdev make
+
+      - name: Show result
+        run: ls -la
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: uvc-prx
+          path: |
+            uvc.prx
+            EBOOT.PBP
+          if-no-files-found: error
