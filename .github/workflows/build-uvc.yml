@@ -1,30 +1,15 @@
-yaml
-
-
 name: build-uvc
-on:
-  push:
-    branches: [main, master]
-  workflow_dispatch:
+on: [push, workflow_dispatch]
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Show files
-        run: |
-          pwd
-          find . -maxdepth 3 -not -path './.git*' | sort | head -60
-      - name: Build plugin
-        run: |
+      - run: |
           MK=$(find . -name Makefile -not -path './.git/*' | head -1)
           echo "Makefile: $MK"
           DIR=$(dirname "$MK")
           docker run --rm -v "$PWD":/src -w "/src/${DIR#./}" pspdev/pspdev make
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: uvc-prx
-          path: "**/*.prx"
-          if-no-files-found: error
-          
+      - run: find . -maxdepth 3 -not -path './.git*' | sort | head -60
+      - uses: actions/upload-artifact@v4
+        with: {name: uvc-prx, path: "**/*.prx"}
